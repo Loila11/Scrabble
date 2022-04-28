@@ -154,7 +154,10 @@ class Board:
         for tile in tiles:
             self.board[tile.row][tile.column] = tile.letter
 
-    def add_turn(self, tiles):
+    def add_turn(self, tiles, file_name):
         turn = Turn(tiles, self.board, self.bonus)
         self.add_tiles(turn.tiles)
-        print(turn)
+
+        f = open('results/' + file_name, 'w')
+        f.write(str(turn))
+        f.close()

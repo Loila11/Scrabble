@@ -23,10 +23,10 @@ def main(path):
     for i in range(1, 6):
         board = score.Board()
         for j in range(1, 21):
-            image_name = str(i) + '_' + ('0' if j < 10 else '') + str(j) + '.jpg'
-            image = patternMatching.Board(image_name, path)
+            file_name = str(i) + '_' + ('0' if j < 10 else '') + str(j)
+            image = patternMatching.Board(file_name + '.jpg', path)
             tiles = get_turn(board, image)
-            board.add_turn(tiles)
+            board.add_turn(tiles, file_name + '.txt')
 
 
 main('train')
