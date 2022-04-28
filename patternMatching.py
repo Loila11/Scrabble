@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import numpy as np
 import cv2
 
@@ -81,29 +80,33 @@ class Board:
         return horizontal, vertical
 
     def get_board(self):
-        h_middle = self.edges.shape[0] / 2
-        top = filter(lambda x: top_filter(x, h_middle), self.horizontal_lines)
-        bottom = filter(lambda x: bottom_filter(x, h_middle), self.horizontal_lines)
+        threshold = 100
+        if int(self.image_name[0]) < 3:
+            threshold = 900
 
-        v_middle = self.edges.shape[1] / 2
-        left = filter(lambda x: left_filter(x, v_middle), self.vertical_lines)
-        right = filter(lambda x: right_filter(x, v_middle), self.vertical_lines)
+        # TODO: rotit + centrat imagine inainte de asta ca sa pot aplica threshold pe tot
 
-        print(self.image_name)
-        print(self.edges.shape, h_middle)
-        for line in self.horizontal_lines:
-            print(line)
-        print('------------')
+        h_middle = self.edges.shape[1] / 2
+        top = filter(lambda x: top_filter(x, h_middle - threshold), self.horizontal_lines)
+        bottom = filter(lambda x: bottom_filter(x, h_middle + threshold), self.horizontal_lines)
+
+        v_middle = self.edges.shape[0] / 2
+        left = filter(lambda x: left_filter(x, v_middle - threshold), self.vertical_lines)
+        right = filter(lambda x: right_filter(x, v_middle + threshold), self.vertical_lines)
 
         top_line = list(top)[-1]
         bottom_line = list(bottom)[0]
         left_line = list(left)[-1]
         right_line = list(right)[0]
 
-        print(top_line)
-        print(bottom_line)
-
-        # TODO: check ca sunt pe linii
+        print(self.image_name)
+        print(top_line, bottom_line, left_line, right_line)
+        # (1000, 430), (3050, 2650)
+        print(line_intersection(top_line, left_line))
+        print(line_intersection(top_line, right_line))
+        print(line_intersection(bottom_line, left_line))
+        print(line_intersection(bottom_line, right_line))
+        print()
 
         outline = np.copy(self.edges) * 0
         for line in [top_line, bottom_line, left_line, right_line]:
@@ -149,15 +152,31 @@ def top_filter(line, middle):
 
 
 def bottom_filter(line, middle):
-    return True if line.start.x > middle and line.end.x > middle else False
+    return line.start.x > middle and line.end.x > middle
 
 
 def left_filter(line, middle):
-    return True if line.start.y < middle and line.end.y < middle else False
+    return line.start.y < middle and line.end.y < middle
 
 
 def right_filter(line, middle):
-    return True if line.start.y > middle and line.end.y > middle else False
+    return line.start.y > middle and line.end.y > middle
+
+
+def line_intersection(line1, line2):
+    def det(a, b):
+        return a.x * b.y - a.y * b.x
+
+    div = (line1.start.x - line1.end.x) * (line2.start.y - line2.end.y) - \
+          (line1.start.y - line1.end.y) * (line2.start.x - line2.end.x)
+
+    px = det(line1.start, line1.end) * (line2.start.x - line2.end.x) - \
+         (line1.start.x - line1.end.x) * det(line2.start, line2.end)
+
+    py = det(line1.start, line1.end) * (line2.start.y - line2.end.y) - \
+         (line1.start.y - line1.end.y) * det(line2.start, line2.end)
+
+    return Point(px / div, py / div)
 
 
 def separate_lines(lines):

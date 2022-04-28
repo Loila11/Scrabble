@@ -20,9 +20,9 @@ def get_turn(board, image_board):
 
 
 def main():
-    for i in range(1, 2):
+    for i in range(1, 6):
         board = score.Board()
-        for j in range(1, 2):
+        for j in range(1, 21):
             image_name = str(i) + '_' + ('0' if j < 10 else '') + str(j) + '.jpg'
             image = patternMatching.Board(image_name)
             # tiles = get_turn(board, image)
