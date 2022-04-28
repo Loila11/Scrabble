@@ -5,6 +5,7 @@ import cv2
 #           ('train/1_01.jpg', (1000, 430), (3050, 2650))]
 
 alphabet = ('board+letters/14.jpg', (600, 1230), (2670, 3490))
+# x: 2050, y: 2250
 
 LETTER_TILES = {
     'A': (5, 5), 'B': (5, 6), 'C': (5, 7), 'D': (5, 8), 'E': (5, 9),
@@ -35,31 +36,42 @@ class Line:
     def __str__(self):
         return '[' + str(self.start) + ', ' + str(self.end) + ']'
 
+    def get_line_eq(self):
+        a = self.start.y - self.end.y
+        b = self.end.x - self.start.x
+        c = self.start.x * self.end.y - self.start.y * self.end.x
+
+        return int(a), int(b), int(c)
+
 
 class Rectangle:
     def __init__(self, start, end):
         self.start = start
         self.end = end
 
+    def __str__(self):
+        return '(' + str(self.start) + ', ' + str(self.end) + ')'
+
     def draw_rectangle(self, image, name):
-        cv2.rectangle(image, (self.start.x, self.start.y), (self.end.x, self.end.y), (0, 255, 0), 5)
-        cv2.imwrite('rectangle_' + name + '.jpg', image)
+        image = np.copy(image)
+        image = cv2.rectangle(image, (self.start.x, self.start.y), (self.end.x, self.end.y), (0, 255, 0), 5)
+        cv2.imwrite('rectangles/' + name, image)
 
 
 class Board:
-    def __init__(self, image_name):
+    def __init__(self, image_name, path):
         self.image_name = image_name
-        self.image = cv2.imread('train/' + image_name)
+        self.image = cv2.imread(path + '/' + image_name)
         self.edges = self.process_image()
         self.horizontal_lines, self.vertical_lines = self.get_lines()
 
         self.draw_lines()
-        self.get_board()
-
-        self.start = Point(1000, 430)
-        self.end = Point(3050, 2650)
+        self.start, self.end = self.get_board()
 
         self.board = Rectangle(self.start, self.end)
+        print(self.board)
+
+        self.board.draw_rectangle(self.image, self.image_name)
         self.tile_size = ((self.board.end.x - self.board.start.x) / 15, (self.board.end.y - self.board.start.y) / 15)
 
     def process_image(self):
@@ -99,17 +111,18 @@ class Board:
         left_line = list(left)[-1]
         right_line = list(right)[0]
 
-        print(self.image_name)
-        print(top_line, bottom_line, left_line, right_line)
-        # (1000, 430), (3050, 2650)
-        print(line_intersection(top_line, left_line))
-        print(line_intersection(top_line, right_line))
-        print(line_intersection(bottom_line, left_line))
-        print(line_intersection(bottom_line, right_line))
-        print()
+        self.draw_outlines([top_line, bottom_line, left_line, right_line])
 
+        top_left = line_intersection(top_line, left_line)
+        top_right = line_intersection(top_line, right_line)
+        bottom_left = line_intersection(bottom_line, left_line)
+        bottom_right = line_intersection(bottom_line, right_line)
+
+        return top_left, bottom_right
+
+    def draw_outlines(self, outline_list):
         outline = np.copy(self.edges) * 0
-        for line in [top_line, bottom_line, left_line, right_line]:
+        for line in outline_list:
             cv2.line(outline, (line.start.x, line.start.y), (line.end.x, line.end.y), (255, 0, 0), 5)
 
         outline = cv2.addWeighted(self.edges, 0.8, outline, 1, 0)
@@ -163,20 +176,17 @@ def right_filter(line, middle):
     return line.start.y > middle and line.end.y > middle
 
 
-def line_intersection(line1, line2):
-    def det(a, b):
-        return a.x * b.y - a.y * b.x
+def line_intersection(l1, l2):
+    a1, b1, c1 = l1.get_line_eq()
+    a2, b2, c2 = l2.get_line_eq()
 
-    div = (line1.start.x - line1.end.x) * (line2.start.y - line2.end.y) - \
-          (line1.start.y - line1.end.y) * (line2.start.x - line2.end.x)
+    if a1 * b2 == a2 * b1:
+        return None
 
-    px = det(line1.start, line1.end) * (line2.start.x - line2.end.x) - \
-         (line1.start.x - line1.end.x) * det(line2.start, line2.end)
+    x = (b1 * c2 - b2 * c1) / (a1 * b2 - a2 * b1)
+    y = (c1 * a2 - c2 * a1) / (a1 * b2 - a2 * b1)
 
-    py = det(line1.start, line1.end) * (line2.start.y - line2.end.y) - \
-         (line1.start.y - line1.end.y) * det(line2.start, line2.end)
-
-    return Point(px / div, py / div)
+    return Point(int(x), int(y))
 
 
 def separate_lines(lines):
@@ -200,7 +210,8 @@ def get_best_correlation(tile_image):
     best_score = ('.', 0)
 
     for letter in TEMPLATES:
-        letter_image = cv2.imread('templates_fit/' + letter + '.jpg')
+        letter_image = cv2.imread('templates/' + letter + '.jpg')
+
         score = cv2.matchTemplate(tile_image, letter_image, cv2.TM_CCORR_NORMED)
         _, max_val, _, _ = cv2.minMaxLoc(score)
 
