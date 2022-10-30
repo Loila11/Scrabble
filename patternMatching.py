@@ -1,3 +1,5 @@
+import math
+import imutils
 import numpy as np
 import cv2
 
@@ -5,7 +7,6 @@ import cv2
 #           ('train/1_01.jpg', (1000, 430), (3050, 2650))]
 
 alphabet = ('board+letters/14.jpg', (600, 1230), (2670, 3490))
-# x: 2050, y: 2250
 
 LETTER_TILES = {
     'A': (5, 5), 'B': (5, 6), 'C': (5, 7), 'D': (5, 8), 'E': (5, 9),
@@ -13,8 +14,9 @@ LETTER_TILES = {
     'K': (7, 5), 'L': (7, 6), 'M': (7, 7), 'N': (7, 8), 'O': (7, 9),
     'P': (8, 5), 'Q': (8, 6), 'R': (8, 7), 'S': (8, 8), 'T': (8, 9),
     'U': (9, 5), 'V': (9, 6), 'W': (9, 7), 'X': (9, 8), 'Y': (9, 9),
-    'Z': (10, 5), '_': (10, 6)
+    'Z': (10, 5)
 }
+# '_': (10, 6)
 
 TEMPLATES = ['.', 'DL', 'DW', 'TL', 'TW'] + list(LETTER_TILES.keys())
 
@@ -26,6 +28,13 @@ class Point:
 
     def __str__(self):
         return '(' + str(self.x) + ', ' + str(self.y) + ')'
+
+    def rotate(self, alpha, center):
+        x = self.x - center.x
+        y = self.y - center.y
+
+        self.x = round(x * math.cos(alpha) + y * math.sin(alpha) + center.x)
+        self.y = round(- x * math.sin(alpha) + y * math.cos(alpha) + center.y)
 
 
 class Line:
@@ -55,7 +64,7 @@ class Rectangle:
     def draw_rectangle(self, image, name):
         image = np.copy(image)
         image = cv2.rectangle(image, (self.start.x, self.start.y), (self.end.x, self.end.y), (0, 255, 0), 5)
-        cv2.imwrite('rectangles/' + name, image)
+        # cv2.imwrite('rectangles/' + name, image)
 
 
 class Board:
@@ -65,21 +74,20 @@ class Board:
         self.edges = self.process_image()
         self.horizontal_lines, self.vertical_lines = self.get_lines()
 
-        self.draw_lines()
-        self.start, self.end = self.get_board()
+        self.top_line, self.bottom_line = self.get_board()
+        self.image = self.rotate()
+        self.image = self.crop()
+        self.image = self.resize()
 
-        self.board = Rectangle(self.start, self.end)
-        print(self.board)
-
-        self.board.draw_rectangle(self.image, self.image_name)
-        self.tile_size = ((self.board.end.x - self.board.start.x) / 15, (self.board.end.y - self.board.start.y) / 15)
+        self.board = Rectangle(Point(0, 0), Point(self.image.shape[0], self.image.shape[1]))
+        self.tile_size = (self.image.shape[0] / 15, self.image.shape[1] / 15)
 
     def process_image(self):
         gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
         blur_gray = cv2.GaussianBlur(gray, (7, 7), 0)
         edges = cv2.Canny(blur_gray, 100, 200)
 
-        cv2.imwrite('edges/' + self.image_name, edges)
+        # cv2.imwrite('edges/' + self.image_name, edges)
 
         return edges
 
@@ -96,8 +104,6 @@ class Board:
         if int(self.image_name[0]) < 3:
             threshold = 900
 
-        # TODO: rotit + centrat imagine inainte de asta ca sa pot aplica threshold pe tot
-
         h_middle = self.edges.shape[1] / 2
         top = filter(lambda x: top_filter(x, h_middle - threshold), self.horizontal_lines)
         bottom = filter(lambda x: bottom_filter(x, h_middle + threshold), self.horizontal_lines)
@@ -111,14 +117,44 @@ class Board:
         left_line = list(left)[-1]
         right_line = list(right)[0]
 
-        self.draw_outlines([top_line, bottom_line, left_line, right_line])
-
         top_left = line_intersection(top_line, left_line)
         top_right = line_intersection(top_line, right_line)
         bottom_left = line_intersection(bottom_line, left_line)
         bottom_right = line_intersection(bottom_line, right_line)
 
-        return top_left, bottom_right
+        # self.draw_outlines([top_line, bottom_line, left_line, right_line])
+
+        return Line(top_left, top_right), Line(bottom_left, bottom_right)
+
+    def rotate(self):
+        left_line = Line(self.top_line.start, self.bottom_line.start)
+        a, b, c = left_line.get_line_eq()
+        alpha = math.atan(-a / b)
+        rotated = imutils.rotate(self.image, angle=alpha * 180 / np.pi)
+
+        center = Point(self.image.shape[0] / 2, self.image.shape[1] / 2)
+        self.top_line.start.rotate(alpha, center)
+        self.top_line.end.rotate(alpha, center)
+        self.bottom_line.start.rotate(alpha, center)
+        self.bottom_line.end.rotate(alpha, center)
+
+        return rotated
+
+    def resize(self):
+        resized = cv2.resize(self.image, (2355, 2145), interpolation=cv2.INTER_NEAREST)
+
+        return resized
+
+    def crop(self):
+        a = self.top_line.end.y + 10
+        b = self.top_line.start.y - 10
+        c = self.bottom_line.start.x + 10
+        d = self.top_line.start.x - 10
+
+        cropped = self.image[b:a, d:c]
+
+        # cv2.imwrite('crop/' + self.image_name, cropped)
+        return cropped
 
     def draw_outlines(self, outline_list):
         outline = np.copy(self.edges) * 0
@@ -126,7 +162,7 @@ class Board:
             cv2.line(outline, (line.start.x, line.start.y), (line.end.x, line.end.y), (255, 0, 0), 5)
 
         outline = cv2.addWeighted(self.edges, 0.8, outline, 1, 0)
-        cv2.imwrite('outlines/' + self.image_name, outline)
+        # cv2.imwrite('outlines/' + self.image_name, outline)
 
     def draw_lines(self):
         line_image = np.copy(self.edges) * 0
@@ -136,16 +172,16 @@ class Board:
                      (line.end.x, line.end.y),
                      (255, 0, 0), 5)
 
-        cv2.imwrite('image_lines/' + self.image_name, line_image)
+        # cv2.imwrite('image_lines/' + self.image_name, line_image)
 
         lines_edges = cv2.addWeighted(self.edges, 0.8, line_image, 1, 0)
-        cv2.imwrite('image_with_lines/' + self.image_name, lines_edges)
+        # cv2.imwrite('image_with_lines/' + self.image_name, lines_edges)
 
     def get_tile_rectangle(self, row, column):
-        start = Point(int(self.board.start.x + (column - 1) * self.tile_size[0]),
-                      int(self.board.start.y + (row - 1) * self.tile_size[1]))
-        end = Point(int(self.board.start.x + column * self.tile_size[0] + 10),
-                    int(self.board.start.y + row * self.tile_size[1] + 10))
+        start = Point(int(self.board.start.x + (row - 1) * self.tile_size[0]),
+                      int(self.board.start.y + (column - 1) * self.tile_size[1]))
+        end = Point(int(self.board.start.x + row * self.tile_size[0]),
+                    int(self.board.start.y + column * self.tile_size[1]))
 
         return Rectangle(start, end)
 
@@ -155,7 +191,13 @@ class Board:
 
     def get_tile_image(self, row, column):
         tile = self.get_tile_rectangle(row, column)
-        tile_image = self.image[tile.start.y:tile.end.y, tile.start.x:tile.end.x]
+
+        a = max(0, tile.start.x - 5)
+        b = min(self.image.shape[0], tile.end.x + 5)
+        c = max(0, tile.start.y - 5)
+        d = min(self.image.shape[1], tile.end.y + 5)
+
+        tile_image = self.image[a:b, c:d]
 
         return tile_image
 

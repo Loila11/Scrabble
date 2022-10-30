@@ -158,6 +158,7 @@ class Board:
         turn = Turn(tiles, self.board, self.bonus)
         self.add_tiles(turn.tiles)
 
+        print(turn)
         f = open('results/' + file_name, 'w')
         f.write(str(turn))
         f.close()
